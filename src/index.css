@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Blød scroll, men slået fra hvis brugeren har bedt systemet om mindre bevægelse */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

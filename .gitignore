@@ -1,0 +1,11 @@
+# Afhængigheder (genskabes med npm install)
+node_modules/
+
+# Build-output (genskabes med npm run build)
+dist/
+
+# macOS-systemfiler
+.DS_Store
+
+# Lokal Claude Code-opsætning (maskin-specifikke stier)
+.claude/
