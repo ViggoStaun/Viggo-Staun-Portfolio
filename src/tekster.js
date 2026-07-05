@@ -51,7 +51,7 @@ export const PROJEKTER = [
   {
     titel: "Pandaspil",
     beskrivelse:
-      "Et lille browserspil bygget med Claude Code. Man er en panda, " +
+      "Et browserspil bygget med Claude Code. Man er en panda, " +
       "der hopper og kravler i træer. Målet var at komme i gang, med at lave et håndgribeligt projekt.",
     link: "/pandaspil/index.html",
     linkTekst: "Afprøv spillet",
