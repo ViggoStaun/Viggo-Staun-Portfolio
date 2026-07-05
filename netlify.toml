@@ -1,0 +1,5 @@
+# Netlify-konfiguration: fortæller Netlify hvordan siden bygges.
+# Ligger i repoet, så indstillingerne ikke kan forsvinde ved klik-fejl.
+[build]
+  command = "npm run build"
+  publish = "dist"
