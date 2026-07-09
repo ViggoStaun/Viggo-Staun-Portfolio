@@ -58,6 +58,17 @@ export const PROJEKTER = [
     nyFane: true,
     tags: ["Claude Code"],
   },
+  {
+    titel: "Sovende pige",
+    beskrivelse:
+      "En 10 sekunders animation af en pige, der sover i en sofa — tegnet " +
+      "og animeret med kode, med lyd og mulighed for at gemme som video. " +
+      "Målet var at lære, hvordan animationer bygges op frame for frame.",
+    link: "/sovende-pige/index.html",
+    linkTekst: "Se animationen",
+    nyFane: true,
+    tags: ["Claude Code"],
+  },
   // {
   //   titel: "Næste projekt",
   //   beskrivelse: "Kort beskrivelse her.",

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<title>Sovende pige — 10 sekunders animation</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: #241f33; font-family: -apple-system, "Segoe UI", sans-serif; color: #e8e4f2;
+    padding: 20px; box-sizing: border-box;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  canvas { width: min(92vw, 1200px); height: auto; border-radius: 14px; box-shadow: 0 12px 50px rgba(0,0,0,.5); }
+  .knapper { display: flex; gap: 12px; }
+  button {
+    font-size: 17px; padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer;
+    background: #6d5bd0; color: white; font-weight: 600;
+  }
+  button:hover { background: #7e6ce0; }
+  button:disabled { background: #4a4560; cursor: default; }
+  #status { font-size: 15px; color: #b9b2d0; min-height: 20px; }
+</style>
+</head>
+<body>
+<h1>😴 Sovende pige i sofaen</h1>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div class="knapper">
+  <button id="playBtn">▶ Afspil med lyd</button>
+  <button id="exportBtn">⬇ Eksportér video (10 sek)</button>
+</div>
+<div id="status"></div>
+
+<script>
+"use strict";
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const W = 1920, H = 1080;
+
+const CYCLE = 10 / 3;          // ét åndedrag: 3 pr. 10 sekunder
+const SNORE_PART = 0.42;       // andel af cyklus hvor hun snorker (indånding)
+
+// ---------- Tidsstyring (fælles klok for billede og lyd) ----------
+let actx = null, audioT0 = 0;
+const perfT0 = performance.now();
+function nu() {
+  if (actx) return actx.currentTime - audioT0;
+  return (performance.now() - perfT0) / 1000;
+}
+
+// ---------- Z'er ----------
+let zs = [];
+const spawned = new Set();
+function opdaterZer(t) {
+  const cyklus = Math.floor(t / CYCLE);
+  const phase = (t % CYCLE) / CYCLE;
+  // tre Z'er pr. snork, stigende størrelse
+  [[0.05, 40], [0.16, 58], [0.28, 80]].forEach(([p, size], slot) => {
+    const key = cyklus + "-" + slot;
+    if (phase >= p && !spawned.has(key)) {
+      spawned.add(key);
+      zs.push({ born: t, x: 726, y: 560, size, seed: Math.random() * 6 });
+    }
+  });
+  zs = zs.filter(z => t - z.born < 2.6);
+}
+function nulstil(tilT0) {
+  zs = []; spawned.clear();
+  if (tilT0 && actx) audioT0 = actx.currentTime;
+}
+
+// ---------- Tegnehjælpere ----------
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+// Dynens øverste kontur (fra skulder til fødder), med vejrtrækning
+function dyneKontur(breathe, dy) {
+  const chest = -18 * breathe;   // brystet hæver sig
+  const belly = -7 * breathe;
+  const p = new Path2D();
+  p.moveTo(712, 585 + dy);
+  p.bezierCurveTo(760, 505 + chest + dy, 900, 480 + chest + dy, 1010, 512 + belly + dy);
+  p.bezierCurveTo(1120, 540 + belly + dy, 1200, 528 + dy, 1290, 548 + dy);
+  p.bezierCurveTo(1380, 566 + dy, 1440, 582 + dy, 1478, 604 + dy);
+  return p;
+}
+function dyneForm(breathe) {
+  const p = dyneKontur(breathe, 0);
+  p.lineTo(1490, 700);
+  p.bezierCurveTo(1480, 760, 1440, 782, 1380, 786);
+  p.lineTo(820, 792);
+  p.bezierCurveTo(740, 792, 706, 740, 706, 680);
+  p.closePath();
+  return p;
+}
+
+// ---------- Selve scenen ----------
+function draw(t) {
+  const phase = ((t % CYCLE) + CYCLE) % CYCLE / CYCLE;
+  const breathe = 0.5 - 0.5 * Math.cos(2 * Math.PI * phase);           // 0..1
+  const snore = phase < SNORE_PART ? Math.sin(Math.PI * phase / SNORE_PART) : 0;
+
+  // Væg (aftenstemning)
+  const wall = ctx.createLinearGradient(0, 0, 0, 820);
+  wall.addColorStop(0, "#4b4363");
+  wall.addColorStop(1, "#332c48");
+  ctx.fillStyle = wall;
+  ctx.fillRect(0, 0, W, 820);
+
+  // Gulv
+  const floor = ctx.createLinearGradient(0, 800, 0, H);
+  floor.addColorStop(0, "#6d5343");
+  floor.addColorStop(1, "#4e3b31");
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, 800, W, H - 800);
+  ctx.fillStyle = "rgba(0,0,0,.18)";
+  ctx.fillRect(0, 800, W, 10);
+
+  // Vindue med nattehimmel
+  ctx.fillStyle = "#3a3150";
+  rr(128, 100, 404, 452, 14); ctx.fill();
+  ctx.save();
+  rr(150, 122, 360, 408, 8); ctx.clip();
+  const sky = ctx.createLinearGradient(0, 122, 0, 530);
+  sky.addColorStop(0, "#141c3d");
+  sky.addColorStop(1, "#2b3564");
+  ctx.fillStyle = sky;
+  ctx.fillRect(150, 122, 360, 408);
+  // Måne med skær
+  const glow = ctx.createRadialGradient(430, 215, 10, 430, 215, 120);
+  glow.addColorStop(0, "rgba(250,245,210,.55)");
+  glow.addColorStop(1, "rgba(250,245,210,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(430, 215, 120, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f4eecb";
+  ctx.beginPath(); ctx.arc(430, 215, 42, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(190,185,150,.5)";
+  ctx.beginPath(); ctx.arc(418, 205, 8, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(444, 228, 6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(425, 235, 4, 0, 7); ctx.fill();
+  // Blinkende stjerner
+  const stars = [[195,180],[260,150],[330,250],[220,320],[380,340],[290,420],[190,460],[440,440],[350,170]];
+  stars.forEach(([sx, sy], i) => {
+    const tw = 0.45 + 0.55 * Math.abs(Math.sin(t * 1.3 + i * 1.7));
+    ctx.fillStyle = `rgba(255,252,230,${tw})`;
+    ctx.beginPath(); ctx.arc(sx, sy, 2.6, 0, 7); ctx.fill();
+  });
+  ctx.restore();
+  // Vinduessprosser
+  ctx.strokeStyle = "#3a3150"; ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.moveTo(330, 122); ctx.lineTo(330, 530);
+  ctx.moveTo(150, 326); ctx.lineTo(510, 326);
+  ctx.stroke();
+
+  // Stålampe med varmt skær
+  ctx.fillStyle = "#2e2838";
+  ctx.fillRect(1738, 400, 12, 405);
+  ctx.beginPath(); ctx.ellipse(1744, 806, 56, 14, 0, 0, 7); ctx.fill();
+  const lys = ctx.createRadialGradient(1744, 360, 20, 1744, 360, 300);
+  lys.addColorStop(0, "rgba(255,205,120,.30)");
+  lys.addColorStop(1, "rgba(255,205,120,0)");
+  ctx.fillStyle = lys;
+  ctx.beginPath(); ctx.arc(1744, 360, 300, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e8b96d";
+  ctx.beginPath();
+  ctx.moveTo(1690, 400); ctx.lineTo(1798, 400); ctx.lineTo(1776, 310); ctx.lineTo(1712, 310);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,.12)";
+  ctx.beginPath();
+  ctx.moveTo(1690, 400); ctx.lineTo(1798, 400); ctx.lineTo(1792, 376); ctx.lineTo(1696, 376);
+  ctx.closePath(); ctx.fill();
+
+  // Tæppe på gulvet
+  ctx.fillStyle = "#7a5a68";
+  ctx.beginPath(); ctx.ellipse(980, 940, 560, 66, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.ellipse(980, 940, 480, 50, 0, 0, 7); ctx.stroke();
+
+  // ---------- Grå sofa ----------
+  ctx.fillStyle = "rgba(0,0,0,.28)";
+  ctx.beginPath(); ctx.ellipse(985, 872, 640, 42, 0, 0, 7); ctx.fill();
+  // Ryglæn
+  ctx.fillStyle = "#787d87";
+  rr(455, 415, 1060, 280, 42); ctx.fill();
+  // Rygpuder
+  ctx.fillStyle = "#8f95a0";
+  rr(485, 445, 480, 210, 30); ctx.fill();
+  rr(1000, 445, 480, 210, 30); ctx.fill();
+  // Sokkel/sæde
+  ctx.fillStyle = "#71767f";
+  rr(470, 660, 1030, 190, 26); ctx.fill();
+  // Sædehynder
+  ctx.fillStyle = "#868c96";
+  rr(480, 640, 515, 90, 24); ctx.fill();
+  rr(1000, 640, 495, 90, 24); ctx.fill();
+  // Armlæn
+  ctx.fillStyle = "#7f848e";
+  rr(370, 470, 150, 390, 56); ctx.fill();
+  rr(1450, 470, 150, 390, 56); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  rr(382, 482, 126, 60, 40); ctx.fill();
+  rr(1462, 482, 126, 60, 40); ctx.fill();
+  // Ben
+  ctx.fillStyle = "#3d3226";
+  ctx.fillRect(480, 850, 26, 34); ctx.fillRect(1464, 850, 26, 34);
+
+  // ---------- Gul pude (stor og tydelig) ----------
+  ctx.save();
+  ctx.translate(640, 610); ctx.rotate(-0.10);
+  ctx.fillStyle = "#e3b73c";
+  rr(-172, -92, 344, 176, 52); ctx.fill();
+  ctx.fillStyle = "#f6cf4f";
+  rr(-172, -100, 344, 168, 52); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-124, -62); ctx.quadraticCurveTo(0, -88, 124, -62); ctx.stroke();
+  ctx.restore();
+
+  // ---------- Hår bag hovedet (spredt over puden) ----------
+  const hår = "#5f3d2a";
+  ctx.fillStyle = hår;
+  ctx.beginPath();
+  ctx.moveTo(660, 500);
+  ctx.bezierCurveTo(560, 492, 520, 560, 528, 620);
+  ctx.bezierCurveTo(534, 668, 588, 690, 646, 678);
+  ctx.bezierCurveTo(700, 690, 748, 662, 752, 606);
+  ctx.bezierCurveTo(756, 548, 730, 500, 660, 500);
+  ctx.closePath(); ctx.fill();
+  // Hårlokker ud over puden
+  ctx.strokeStyle = "#53341f"; ctx.lineWidth = 10; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(560, 560); ctx.quadraticCurveTo(500, 600, 512, 656); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(590, 640); ctx.quadraticCurveTo(566, 680, 590, 700); ctx.stroke();
+
+  // ---------- Ansigt ----------
+  const hud = "#f8d3b4";
+  ctx.fillStyle = hud;
+  ctx.beginPath(); ctx.ellipse(660, 580, 62, 58, -0.06, 0, 7); ctx.fill();
+  // Øre antydning + pandehår
+  ctx.fillStyle = hår;
+  ctx.beginPath();
+  ctx.moveTo(600, 566);
+  ctx.bezierCurveTo(606, 512, 660, 500, 700, 516);
+  ctx.bezierCurveTo(726, 528, 730, 548, 722, 556);
+  ctx.bezierCurveTo(700, 534, 664, 528, 640, 544);
+  ctx.bezierCurveTo(622, 556, 614, 568, 612, 580);
+  ctx.closePath(); ctx.fill();
+  // Lukkede øjne med vipper (fredfyldte buer)
+  ctx.strokeStyle = "#4a3020"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(636, 574, 13, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(688, 572, 13, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
+  ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.moveTo(624, 586); ctx.lineTo(617, 593); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(646, 588); ctx.lineTo(642, 596); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(700, 584); ctx.lineTo(707, 591); ctx.stroke();
+  // Øjenbryn
+  ctx.lineWidth = 4; ctx.strokeStyle = "#5f3d2a";
+  ctx.beginPath(); ctx.arc(636, 566, 16, 1.25 * Math.PI, 1.75 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(688, 564, 16, 1.25 * Math.PI, 1.75 * Math.PI); ctx.stroke();
+  // Næse
+  ctx.strokeStyle = "#d9a583"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(663, 594, 8, 0.15 * Math.PI, 0.7 * Math.PI); ctx.stroke();
+  // Kinder
+  ctx.fillStyle = "rgba(240,130,120,.28)";
+  ctx.beginPath(); ctx.ellipse(622, 600, 13, 8, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(700, 598, 13, 8, 0, 0, 7); ctx.fill();
+  // Mund — åbner sig når hun snorker
+  const mund = 3 + 9 * snore;
+  ctx.fillStyle = "#b3574f";
+  ctx.beginPath(); ctx.ellipse(664, 616, 8 + 3 * snore, mund, 0, 0, 7); ctx.fill();
+
+  // ---------- Hvid dyne med blå striber ----------
+  const form = dyneForm(breathe);
+  // Skygge under dynen
+  ctx.fillStyle = "rgba(0,0,0,.15)";
+  ctx.save(); ctx.translate(6, 10); ctx.fill(form); ctx.restore();
+  ctx.fillStyle = "#fbfaf4";
+  ctx.fill(form);
+  // Striber der følger dynens kontur
+  ctx.save();
+  ctx.clip(form);
+  ctx.strokeStyle = "#82aede"; ctx.lineWidth = 17; ctx.lineCap = "butt";
+  for (let k = 1; k <= 6; k++) {
+    ctx.stroke(dyneKontur(breathe, k * 46));
+  }
+  // Blød skygge langs dynens top
+  ctx.strokeStyle = "rgba(120,130,160,.25)"; ctx.lineWidth = 6;
+  ctx.stroke(dyneKontur(breathe, 4));
+  ctx.restore();
+  ctx.strokeStyle = "#d8d5c8"; ctx.lineWidth = 4;
+  ctx.stroke(form);
+
+  // Hånd der hviler på dynekanten
+  ctx.fillStyle = hud;
+  ctx.beginPath(); ctx.ellipse(742, 588 - 14 * breathe, 20, 14, -0.5, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#e0b391"; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(736, 582 - 14 * breathe); ctx.lineTo(748, 592 - 14 * breathe); ctx.stroke();
+
+  // ---------- Svævende Z Z Z ----------
+  opdaterZer(t);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  zs.forEach(z => {
+    const age = t - z.born;
+    const alpha = Math.min(1, age * 3) * Math.max(0, 1 - age / 2.6);
+    const x = z.x + age * 55 + 22 * Math.sin(age * 2.2 + z.seed);
+    const y = z.y - age * 95;
+    const size = z.size * (1 + age * 0.35);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(0.18 * Math.sin(age * 2.5 + z.seed));
+    ctx.font = `bold ${size}px "Comic Sans MS", "Marker Felt", sans-serif`;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#4f86e8";
+    ctx.strokeStyle = "rgba(255,255,255,.7)";
+    ctx.lineWidth = size / 12;
+    ctx.strokeText("Z", 0, 0);
+    ctx.fillText("Z", 0, 0);
+    ctx.restore();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function loop() {
+  draw(nu());
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ---------- Lyd ----------
+let master = null, recDest = null, snoreTimer = null;
+
+function startLyd() {
+  if (actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  audioT0 = actx.currentTime;
+  master = actx.createGain();
+  master.gain.value = 0.9;
+  master.connect(actx.destination);
+  recDest = actx.createMediaStreamDestination();
+  master.connect(recDest);
+  startAmbient();
+  planlægSnorken();
+  nulstil(true);
+}
+
+// Beroligende ambient-pad: Cmaj7-toner med langsomme volumen-bølger
+function startAmbient() {
+  const lp = actx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 900;
+  lp.connect(master);
+  const noter = [130.81, 196.0, 329.63, 493.88]; // C3 G3 E4 B4
+  noter.forEach((f, i) => {
+    [-4, 4].forEach(cents => {
+      const o = actx.createOscillator();
+      o.type = i < 2 ? "sine" : "triangle";
+      o.frequency.value = f;
+      o.detune.value = cents;
+      const g = actx.createGain();
+      g.gain.value = 0.028;
+      // Langsom svævende LFO på styrken
+      const lfo = actx.createOscillator();
+      lfo.frequency.value = 0.06 + i * 0.035;
+      const lfoG = actx.createGain();
+      lfoG.gain.value = 0.014;
+      lfo.connect(lfoG); lfoG.connect(g.gain);
+      o.connect(g); g.connect(lp);
+      o.start(); lfo.start();
+    });
+  });
+}
+
+// Snorkelyd: rungende lav brummen (indånding) + blødt pust (udånding)
+let noiseBuf = null;
+function lavNoise() {
+  const n = actx.sampleRate * 2;
+  noiseBuf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+}
+function planlægSnork(t0) {
+  const dur = CYCLE * SNORE_PART * 0.95;
+  // Rasp: savtand gennem lavpas med tremolo
+  const o = actx.createOscillator();
+  o.type = "sawtooth";
+  o.frequency.setValueAtTime(88, t0);
+  o.frequency.linearRampToValueAtTime(62, t0 + dur);
+  const lp = actx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 290; lp.Q.value = 7;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(0.34, t0 + dur * 0.25);
+  g.gain.setValueAtTime(0.34, t0 + dur * 0.7);
+  g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+  const trem = actx.createOscillator();
+  trem.frequency.value = 26;
+  const tremG = actx.createGain();
+  tremG.gain.value = 0.16;
+  trem.connect(tremG); tremG.connect(g.gain);
+  o.connect(lp); lp.connect(g); g.connect(master);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+  trem.start(t0); trem.stop(t0 + dur + 0.05);
+  // Pust bagefter (udånding)
+  if (!noiseBuf) lavNoise();
+  const pust = actx.createBufferSource();
+  pust.buffer = noiseBuf; pust.loop = true;
+  const bp = actx.createBiquadFilter();
+  bp.type = "bandpass"; bp.frequency.value = 750; bp.Q.value = 0.6;
+  const pg = actx.createGain();
+  const p0 = t0 + CYCLE * 0.52, pd = CYCLE * 0.34;
+  pg.gain.setValueAtTime(0.0001, p0);
+  pg.gain.linearRampToValueAtTime(0.05, p0 + pd * 0.3);
+  pg.gain.linearRampToValueAtTime(0.0001, p0 + pd);
+  pust.connect(bp); bp.connect(pg); pg.connect(master);
+  pust.start(p0); pust.stop(p0 + pd + 0.05);
+}
+let næsteCyklus = 0;
+function planlægSnorken() {
+  næsteCyklus = Math.ceil((actx.currentTime - audioT0) / CYCLE);
+  snoreTimer = setInterval(() => {
+    // planlæg snork for cyklusser der starter inden for de næste 2 sekunder
+    while (audioT0 + næsteCyklus * CYCLE < actx.currentTime + 2) {
+      planlægSnork(audioT0 + næsteCyklus * CYCLE);
+      næsteCyklus++;
+    }
+  }, 300);
+  // første med det samme
+  planlægSnork(audioT0 + næsteCyklus * CYCLE);
+  næsteCyklus++;
+}
+
+// ---------- Knapper ----------
+const playBtn = document.getElementById("playBtn");
+const exportBtn = document.getElementById("exportBtn");
+const status = document.getElementById("status");
+
+playBtn.addEventListener("click", () => {
+  startLyd();
+  playBtn.disabled = true;
+  playBtn.textContent = "♪ Spiller…";
+});
+
+function blobVarighed(blob) {
+  return new Promise((res) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); res(v.duration); };
+    v.onerror = () => { URL.revokeObjectURL(v.src); res(NaN); };
+    v.src = URL.createObjectURL(blob);
+  });
+}
+
+let optager = false;
+exportBtn.addEventListener("click", async () => {
+  if (optager) return;
+  optager = true;
+  startLyd();
+  playBtn.disabled = true;
+  playBtn.textContent = "♪ Spiller…";
+  exportBtn.disabled = true;
+  status.textContent = "Optager 10 sekunder…";
+
+  // Genstart forløbet så videoen begynder ved et frisk åndedrag
+  nulstil(true);
+  næsteCyklus = 0;
+
+  const stream = canvas.captureStream(60);
+  recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+
+  const kandidater = [
+    'video/mp4;codecs="avc1.640028,mp4a.40.2"',
+    "video/mp4",
+    'video/webm;codecs="vp9,opus"',
+    "video/webm",
+  ];
+  const mime = kandidater.find(m => MediaRecorder.isTypeSupported(m)) || "";
+  const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+  const bidder = [];
+  rec.ondataavailable = e => { if (e.data.size) bidder.push(e.data); };
+  rec.onstop = async () => {
+    const blob = new Blob(bidder, { type: mime || "video/webm" });
+    const varighed = await blobVarighed(blob);
+    if (!(varighed > 9.3)) {
+      status.textContent = `⚠️ Optagelsen blev kun ${isNaN(varighed) ? "ulæselig" : varighed.toFixed(1) + " sek"} — prøv igen (filen er IKKE gemt).`;
+      exportBtn.disabled = false;
+      optager = false;
+      return;
+    }
+    status.textContent = "Gemmer filen…";
+    try {
+      const svar = await fetch("/save?ext=" + ext, { method: "POST", body: blob });
+      if (!svar.ok) throw new Error("serverfejl " + svar.status);
+      status.textContent = `✅ Gemt som sovende-pige.${ext} (${(blob.size / 1e6).toFixed(1)} MB, ${varighed.toFixed(1)} sek)`;
+    } catch (err) {
+      // Fallback: download i browseren hvis serveren ikke svarer
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "sovende-pige." + ext;
+      a.click();
+      status.textContent = "Serveren svarede ikke — filen er downloadet i stedet.";
+    }
+    exportBtn.disabled = false;
+    optager = false;
+  };
+  rec.start();
+  setTimeout(() => rec.stop(), 10_000);
+});
+</script>
+</body>
+</html>

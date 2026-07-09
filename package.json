@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sync-spil": "rm -rf public/pandaspil && cp -R ../Panda-spil public/pandaspil"
+    "sync-spil": "rm -rf public/pandaspil && cp -R ../Panda-spil public/pandaspil",
+    "sync-sovende-pige": "mkdir -p public/sovende-pige && cp ../Sovende-pige/soveanimation.html public/sovende-pige/index.html"
   },
   "dependencies": {
     "react": "^19.1.0",

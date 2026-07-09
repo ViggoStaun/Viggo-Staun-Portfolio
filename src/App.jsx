@@ -60,14 +60,59 @@ function FadeInSektion({ children, className = "" }) {
 }
 
 // Prik/markør på den lodrette linje. Placeres af hver sektion.
+// data-prik bruges af useLinjeMål til at finde første og sidste prik.
 function LinjePrik() {
   return (
     <span
       aria-hidden="true"
+      data-prik="true"
       className="absolute top-[0.45em] -left-6 sm:-left-10 -translate-x-1/2 h-2.5 w-2.5 rounded-full"
       style={{ backgroundColor: FARVER.accent }}
     />
   );
+}
+
+// Måler hvor linjen skal starte og slutte: fra midten af den første
+// prik til midten af den sidste. Måler igen når layoutet ændrer sig
+// (fx anden skærmbredde eller redigeret tekst), så linjen ALTID
+// rammer prikkerne præcist.
+function useLinjeMål() {
+  const containerRef = useRef(null);
+  const [mål, setMål] = useState(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Lodret position i forhold til rammen, målt via layoutet —
+    // upåvirket af fade-ind-animationernes midlertidige forskydning.
+    const yIRamme = (el) => {
+      let y = 0;
+      let node = el;
+      while (node && node !== container) {
+        y += node.offsetTop;
+        node = node.offsetParent;
+      }
+      return y;
+    };
+
+    const opdater = () => {
+      const prikker = container.querySelectorAll("[data-prik]");
+      if (prikker.length < 2) return;
+      const først = prikker[0];
+      const sidst = prikker[prikker.length - 1];
+      const top = yIRamme(først) + først.offsetHeight / 2;
+      const bund = yIRamme(sidst) + sidst.offsetHeight / 2;
+      setMål({ top, height: bund - top });
+    };
+
+    opdater();
+    const observer = new ResizeObserver(opdater);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  return [containerRef, mål];
 }
 
 // Ét projekt-card. Sidder direkte på linjen via sin LinjePrik.
@@ -111,23 +156,35 @@ function ProjektCard({ projekt }) {
 }
 
 export default function App() {
+  // Ref til rammen + de målte start/slut-positioner for linjen
+  const [rammeRef, linjeMål] = useLinjeMål();
+
   return (
     <main
       className="min-h-screen antialiased"
       style={{ backgroundColor: FARVER.baggrund, color: FARVER.tekst }}
     >
       {/* Ydre ramme: centreret kolonne med plads til linjen i venstre side */}
-      <div className="relative mx-auto max-w-2xl px-6 sm:px-10 py-16 sm:py-24">
+      <div
+        ref={rammeRef}
+        className="relative mx-auto max-w-2xl px-6 sm:px-10 py-16 sm:py-24"
+      >
 
         {/* DEN LODRETTE LINJE — løber fra header-prikken til kontakt-prikken.
-            top/bottom er afstemt efter første og sidste priks position;
-            ændrer du teksten i kontakt-sektionen, kan bottom-værdien
-            skulle justeres et par rem. */}
-        <div
-          aria-hidden="true"
-          className="absolute left-6 sm:left-10 top-[4.8rem] sm:top-[6.85rem] bottom-[13.2rem] sm:bottom-[13.4rem] w-px"
-          style={{ backgroundColor: FARVER.accent, opacity: 0.55 }}
-        />
+            Position måles automatisk (useLinjeMål), så den passer uanset
+            tekstlængde og skærmbredde. */}
+        {linjeMål && (
+          <div
+            aria-hidden="true"
+            className="absolute left-6 sm:left-10 w-px"
+            style={{
+              backgroundColor: FARVER.accent,
+              opacity: 0.55,
+              top: linjeMål.top,
+              height: linjeMål.height,
+            }}
+          />
+        )}
 
         {/* Alt indhold er rykket ind, så det står til højre for linjen */}
         <div className="pl-6 sm:pl-10 flex flex-col">
